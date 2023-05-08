@@ -163,7 +163,6 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
         }
 
         try {
-            System.out.println("мы внутри епты");
             mapper.enable(SerializationFeature.INDENT_OUTPUT);
             mapper.writeValue(file, userList);
         } catch (IOException e) {
