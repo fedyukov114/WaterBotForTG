@@ -147,17 +147,16 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
         //TODO: Падает NPE когда значения равны нулю
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
+                //Отвечает за корректную работу для новых пользователей.
                 if (userInList.getMgOfWaterInDay() != null) {
                     arrayList.addAll(userInList.getMgOfWaterInDay());
-                    arrayList.add(Integer.valueOf(valueFromMessage));
-                    int sumOfMg = arrayList.stream().mapToInt(Integer::intValue).sum();
-                    userInList.setSumOfMg(sumOfMg);
-                    userInList.setMgOfWaterInDay(arrayList);
-                    System.out.println(sumOfMg);
-                    System.out.println(userInList.getMgOfWaterInDay());
-                } else {
-                    arrayList.add(0);
                 }
+                arrayList.add(Integer.valueOf(valueFromMessage));
+                int sumOfMg = arrayList.stream().mapToInt(Integer::intValue).sum();
+                userInList.setSumOfMg(sumOfMg);
+                userInList.setMgOfWaterInDay(arrayList);
+                System.out.println(sumOfMg);
+                System.out.println(userInList.getMgOfWaterInDay());
                 break;
             }
         }
@@ -225,7 +224,10 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
                     Calendar currentDay = new GregorianCalendar();
                     DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
                     System.out.println(dateFormat.format(currentDay.getTime()));
-                    arrayListForCompletedDays.addAll(userInList.getCompletedDays());
+                    //Отвечает за корректную работу для новых пользователей.
+                    if (userInList.getCompletedDays() != null) {
+                        arrayListForCompletedDays.addAll(userInList.getCompletedDays());
+                    }
                     arrayListForCompletedDays.add(dateFormat.format(currentDay.getTime()));
                     userInList.setCompletedDays(arrayListForCompletedDays);
                 }
