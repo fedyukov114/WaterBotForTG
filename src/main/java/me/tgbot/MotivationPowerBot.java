@@ -22,7 +22,6 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     private static final String[] availableMg = {"100", "150", "200", "250", "300", "350"};
     private static final int waterNorm = 2000;
 
-
     @Override
     public void onUpdateReceived(Update update) {
         if (update.hasMessage() && update.getMessage().hasText()) {
@@ -63,11 +62,16 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Метод, который будет отвечать за функционал подсчета воды в день.
      */
+    //TODO: Нужно убрать отдельный вызов метода updateCompletedDays(chatId) 39 строки и добавить его в этот метод.
+    //TODO: Нужно реализовать проверку на прохождение дня в этом методе, чтобы в холостую не накручивался счетчик воды (сейчас он добавляет воду, а только потом смотрит прошел ли день)
     public void waterControl(long chatId, SendMessage msgFromBot, String messageText) {
         msgFromBot.setChatId(chatId);
         msgFromBot.setText("Количество воды учтено");
         try {
+            // if (!checkCurrentDate()) {
             updateMgOfWaterInDay(chatId, messageText);
+            //updateCompletedDays(chatId);
+            //}
             execute(msgFromBot);
         } catch (TelegramApiException e) {
             e.printStackTrace();
@@ -111,24 +115,7 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     }
 
     /*
-    Проверка на дублирование chatId в файле.
-    */
-    private boolean isUnique(User[] userList, User user) {
-        if (userList == null) {
-            return false;
-        } else {
-            for (User userInList : userList) {
-                if (user.getChatId().equals(userInList.getChatId())) {
-                    System.out.println("Вы уже есть в системе !");
-                    return false;
-                }
-            }
-            return true;
-        }
-    }
-
-    /*
-    Метод обновляет значение mg для конкретного юзера
+    Метод обновляет набор значений mgOfWaterInDay для конкретного юзера
      */
     public void updateMgOfWaterInDay(long chatId, String valueFromMessage) {
         ObjectMapper mapper = new ObjectMapper();
@@ -144,7 +131,6 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             }
         }
 
-        //TODO: Падает NPE когда значения равны нулю
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
                 //Отвечает за корректную работу для новых пользователей.
@@ -170,7 +156,7 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     }
 
     /*
-    Метод, который отправляет кнопки клавиатуры в ответ на команду /water
+    Метод отправляет кнопки клавиатуры в ответ на команду /water
     */
     public void createKeyboard(SendMessage msgFromBot, long chatId) {
         ReplyKeyboardMarkup keyboardMarkup = new ReplyKeyboardMarkup();
@@ -193,17 +179,8 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     }
 
     /*
-    Проверка на отправку доступного кол-ва воды
+    Метод обновляет набор значений выполненных дней
      */
-    private boolean checkInAvailableMg(String messageText) {
-        for (String values : availableMg) {
-            if (values.equals(messageText)) {
-                return true;
-            }
-        }
-        return false;
-    }
-
     public void updateCompletedDays(long chatId) {
         ObjectMapper mapper = new ObjectMapper();
         User[] userList = null;
@@ -217,19 +194,27 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             }
         }
 
-        //TODO: Падает NPE когда значения равны нулю
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
                 if (userInList.getSumOfMg() >= waterNorm) {
-                    Calendar currentDay = new GregorianCalendar();
+
                     DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
+                    Calendar currentDay = new GregorianCalendar();
+                    currentDay.add(Calendar.HOUR_OF_DAY, 1);
                     System.out.println(dateFormat.format(currentDay.getTime()));
-                    //Отвечает за корректную работу для новых пользователей.
-                    if (userInList.getCompletedDays() != null) {
-                        arrayListForCompletedDays.addAll(userInList.getCompletedDays());
+                    // Если зашли в if, то день обновился. PS нужно убрать этот if отсюда.
+                    if (!checkCurrentDate()) {
+                        //Отвечает за корректную работу для новых пользователей.
+                        if (userInList.getCompletedDays() != null) {
+                            arrayListForCompletedDays.addAll(userInList.getCompletedDays());
+                        }
+                        arrayListForCompletedDays.add(dateFormat.format(currentDay.getTime()));
+                        userInList.setCompletedDays(arrayListForCompletedDays);
+
+                        //Обнуление значений после выполнения дневной нормы
+                        userInList.setSumOfMg(0);
+                        userInList.setMgOfWaterInDay(null);
                     }
-                    arrayListForCompletedDays.add(dateFormat.format(currentDay.getTime()));
-                    userInList.setCompletedDays(arrayListForCompletedDays);
                 }
                 break;
             }
@@ -242,6 +227,47 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             e.printStackTrace();
         }
 
+    }
+
+    /*
+    Проверка прошел ли день, или нет
+     */
+    private boolean checkCurrentDate() {
+        Calendar currentDay = new GregorianCalendar();
+        Calendar nextDay = new GregorianCalendar();
+        nextDay.add(Calendar.DAY_OF_MONTH, 1);
+
+        //Если верно, то день не прошел, иначе день не прошел
+        return currentDay.compareTo(nextDay) < 0;
+    }
+
+    /*
+    Проверка на дублирование chatId в файле.
+    */
+    private boolean isUnique(User[] userList, User user) {
+        if (userList == null) {
+            return false;
+        } else {
+            for (User userInList : userList) {
+                if (user.getChatId().equals(userInList.getChatId())) {
+                    System.out.println("Вы уже есть в системе !");
+                    return false;
+                }
+            }
+            return true;
+        }
+    }
+
+    /*
+    Проверка на отправку доступного кол-ва воды
+     */
+    private boolean checkInAvailableMg(String messageText) {
+        for (String values : availableMg) {
+            if (values.equals(messageText)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     public MotivationPowerBot() {
