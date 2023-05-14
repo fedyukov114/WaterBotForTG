@@ -12,6 +12,7 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.io.File;
 import java.io.IOException;
 import java.text.DateFormat;
+import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -19,6 +20,7 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     private static final String BOT_TOKEN = System.getenv("BOT_TOKEN");
     private static final String FILE_PATH = System.getenv("FILE_PATH");
     private static final File file = new File(FILE_PATH);
+    private static final ObjectMapper mapper = new ObjectMapper();
     private static final String[] availableMg = {"100", "150", "200", "250", "300", "350"};
     private static final int waterNorm = 2000;
 
@@ -36,7 +38,6 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
                 createKeyboard(msgFromBot, chatId);
             } else if (checkInAvailableMg(messageText)) {
                 waterControl(chatId, msgFromBot, messageText);
-                updateCompletedDays(chatId);
             }
         }
     }
@@ -62,17 +63,26 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Метод, который будет отвечать за функционал подсчета воды в день.
      */
-    //TODO: Нужно убрать отдельный вызов метода updateCompletedDays(chatId) 39 строки и добавить его в этот метод.
     //TODO: Нужно реализовать проверку на прохождение дня в этом методе, чтобы в холостую не накручивался счетчик воды (сейчас он добавляет воду, а только потом смотрит прошел ли день)
     public void waterControl(long chatId, SendMessage msgFromBot, String messageText) {
         msgFromBot.setChatId(chatId);
         msgFromBot.setText("Количество воды учтено");
         try {
-            // if (!checkCurrentDate()) {
-            updateMgOfWaterInDay(chatId, messageText);
-            //updateCompletedDays(chatId);
-            //}
-            execute(msgFromBot);
+            User[] usersList = readDataFromJson();
+            for (User userInList : usersList) {
+                if (userInList.getChatId().equals(chatId)) {
+                    ArrayList<String> userCompletedDays = userInList.getCompletedDays();
+                    String lastDateFromCompletedDaysArr = userCompletedDays.get(userCompletedDays.size() - 1);
+                    if (checkCurrentDate(lastDateFromCompletedDaysArr)) {
+                        updateMgOfWaterInDay(chatId, messageText);
+                        updateCompletedDays(chatId);
+                        execute(msgFromBot);
+                    } else {
+                        msgFromBot.setText("Вы уже выполнили свою норму воды за сегодня!");
+                        execute(msgFromBot);
+                    }
+                }
+            }
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
@@ -83,17 +93,7 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
      */
     public void initializeUser(long chatId) {
         User user = new User(chatId);
-        ObjectMapper mapper = new ObjectMapper();
-        User[] userList = null;
-
-        //Достаем все существующие объекты из JSON-файла.
-        if (file.exists()) {
-            try {
-                userList = mapper.readValue(file, User[].class);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
+        User[] userList = readDataFromJson();
 
         /*
         Проверяем на существование chatId в файле, если он уникален, то добавляем его.
@@ -118,18 +118,8 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     Метод обновляет набор значений mgOfWaterInDay для конкретного юзера
      */
     public void updateMgOfWaterInDay(long chatId, String valueFromMessage) {
-        ObjectMapper mapper = new ObjectMapper();
-        User[] userList = null;
+        User[] userList = readDataFromJson();
         ArrayList<Integer> arrayList = new ArrayList<>();
-
-        //Достаем все существующие объекты из JSON-файла.
-        if (file.exists()) {
-            try {
-                userList = mapper.readValue(file, User[].class);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
 
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
@@ -182,39 +172,26 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     Метод обновляет набор значений выполненных дней
      */
     public void updateCompletedDays(long chatId) {
-        ObjectMapper mapper = new ObjectMapper();
-        User[] userList = null;
+        User[] userList = readDataFromJson();
         ArrayList<String> arrayListForCompletedDays = new ArrayList<>();
-
-        if (file.exists()) {
-            try {
-                userList = mapper.readValue(file, User[].class);
-            } catch (IOException e) {
-                e.printStackTrace();
-            }
-        }
 
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
                 if (userInList.getSumOfMg() >= waterNorm) {
-
                     DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
                     Calendar currentDay = new GregorianCalendar();
-                    currentDay.add(Calendar.HOUR_OF_DAY, 1);
                     System.out.println(dateFormat.format(currentDay.getTime()));
-                    // Если зашли в if, то день обновился. PS нужно убрать этот if отсюда.
-                    if (!checkCurrentDate()) {
-                        //Отвечает за корректную работу для новых пользователей.
-                        if (userInList.getCompletedDays() != null) {
-                            arrayListForCompletedDays.addAll(userInList.getCompletedDays());
-                        }
-                        arrayListForCompletedDays.add(dateFormat.format(currentDay.getTime()));
-                        userInList.setCompletedDays(arrayListForCompletedDays);
 
-                        //Обнуление значений после выполнения дневной нормы
-                        userInList.setSumOfMg(0);
-                        userInList.setMgOfWaterInDay(null);
+                    //Отвечает за корректную работу для новых пользователей.
+                    if (userInList.getCompletedDays() != null) {
+                        arrayListForCompletedDays.addAll(userInList.getCompletedDays());
                     }
+                    arrayListForCompletedDays.add(dateFormat.format(currentDay.getTime()));
+                    userInList.setCompletedDays(arrayListForCompletedDays);
+
+                    //Обнуление значений после выполнения дневной нормы
+                    userInList.setSumOfMg(0);
+                    userInList.setMgOfWaterInDay(null);
                 }
                 break;
             }
@@ -232,13 +209,23 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Проверка прошел ли день, или нет
      */
-    private boolean checkCurrentDate() {
-        Calendar currentDay = new GregorianCalendar();
-        Calendar nextDay = new GregorianCalendar();
-        nextDay.add(Calendar.DAY_OF_MONTH, 1);
+    private boolean checkCurrentDate(String lastDateFromCompletedDaysArr) {
+        DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
 
-        //Если верно, то день не прошел, иначе день не прошел
-        return currentDay.compareTo(nextDay) < 0;
+        Calendar lastDateInCalendar = null;
+        try {
+            Date date = dateFormat.parse(lastDateFromCompletedDaysArr);
+            lastDateInCalendar = Calendar.getInstance();
+            lastDateInCalendar.setTime(date);
+            System.out.println(lastDateInCalendar.getTime());
+        } catch (ParseException e) {
+            e.printStackTrace();
+        }
+
+
+        Calendar currentDay = new GregorianCalendar();
+
+        return currentDay.compareTo(lastDateInCalendar) > 0;
     }
 
     /*
@@ -268,6 +255,21 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             }
         }
         return false;
+    }
+
+    /*
+    Достаем все существующие объекты из JSON-файла.
+     */
+    private User[] readDataFromJson() {
+        User[] userList = null;
+        if (file.exists()) {
+            try {
+                userList = mapper.readValue(file, User[].class);
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
+        }
+        return userList;
     }
 
     public MotivationPowerBot() {
