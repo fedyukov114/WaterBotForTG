@@ -12,7 +12,6 @@ import org.telegram.telegrambots.meta.exceptions.TelegramApiException;
 import java.io.File;
 import java.io.IOException;
 import java.text.DateFormat;
-import java.text.ParseException;
 import java.text.SimpleDateFormat;
 import java.util.*;
 
@@ -64,25 +63,15 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     Метод, который будет отвечать за функционал подсчета воды в день.
      */
     //TODO: Нужно реализовать проверку на прохождение дня в этом методе, чтобы в холостую не накручивался счетчик воды (сейчас он добавляет воду, а только потом смотрит прошел ли день)
+    //TODO: Нужно реализовать проверку на набор необходимого кол-ва воды, чтобы мы не заходили в updateCompletedDays() в пустую. Убрать эту проверку из 169 строки
     public void waterControl(long chatId, SendMessage msgFromBot, String messageText) {
         msgFromBot.setChatId(chatId);
         msgFromBot.setText("Количество воды учтено");
         try {
-            User[] usersList = readDataFromJson();
-            for (User userInList : usersList) {
-                if (userInList.getChatId().equals(chatId)) {
-                    ArrayList<String> userCompletedDays = userInList.getCompletedDays();
-                    String lastDateFromCompletedDaysArr = userCompletedDays.get(userCompletedDays.size() - 1);
-                    if (checkCurrentDate(lastDateFromCompletedDaysArr)) {
-                        updateMgOfWaterInDay(chatId, messageText);
-                        updateCompletedDays(chatId);
-                        execute(msgFromBot);
-                    } else {
-                        msgFromBot.setText("Вы уже выполнили свою норму воды за сегодня!");
-                        execute(msgFromBot);
-                    }
-                }
-            }
+            updateMgOfWaterInDay(chatId, messageText);
+            //if (sum >= waterNorm)
+                updateCompletedDays(chatId);
+            execute(msgFromBot);
         } catch (TelegramApiException e) {
             e.printStackTrace();
         }
@@ -177,7 +166,8 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
 
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
-                if (userInList.getSumOfMg() >= waterNorm) {
+                String lastDayInArr = getLastCompletedDay(chatId, userList);
+                if (!checkCurrentDate(lastDayInArr) && userInList.getSumOfMg() >= waterNorm) {
                     DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
                     Calendar currentDay = new GregorianCalendar();
                     System.out.println(dateFormat.format(currentDay.getTime()));
@@ -209,23 +199,28 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Проверка прошел ли день, или нет
      */
+    //TODO: Все еще не работает
     private boolean checkCurrentDate(String lastDateFromCompletedDaysArr) {
+//        Calendar currentDay = new GregorianCalendar();
+//        Calendar lastDateInCalendar = null;
         DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
 
-        Calendar lastDateInCalendar = null;
-        try {
-            Date date = dateFormat.parse(lastDateFromCompletedDaysArr);
-            lastDateInCalendar = Calendar.getInstance();
-            lastDateInCalendar.setTime(date);
-            System.out.println(lastDateInCalendar.getTime());
-        } catch (ParseException e) {
-            e.printStackTrace();
-        }
+        Calendar calendar = Calendar.getInstance();
+        String currentDayInStr = dateFormat.format(calendar.getTime());
+        System.out.println(currentDayInStr);
 
-
-        Calendar currentDay = new GregorianCalendar();
-
-        return currentDay.compareTo(lastDateInCalendar) > 0;
+//        System.out.println(dateFormat.format(currentDay.getTime()));
+//        try {
+//            Date date = dateFormat.parse(lastDateFromCompletedDaysArr);
+//            lastDateInCalendar = Calendar.getInstance();
+//            lastDateInCalendar.setTime(date);
+//            System.out.println(lastDateInCalendar.getTime());
+//        } catch (ParseException e) {
+//            e.printStackTrace();
+//        }
+//        System.out.println(dateFormat.format(lastDateInCalendar.getTime()));
+//        return currentDay.compareTo(lastDateInCalendar) > 0;
+        return lastDateFromCompletedDaysArr.equals(currentDayInStr);
     }
 
     /*
@@ -270,6 +265,21 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             }
         }
         return userList;
+    }
+
+    /*
+    Достаем последний записанный день из массива completedDays.
+     */
+    private String getLastCompletedDay(long chatId, User[] usersList) {
+        String lastDateFromCompletedDaysArr = "";
+        for (User userInList : usersList) {
+            if (userInList.getChatId().equals(chatId)) {
+                ArrayList<String> userCompletedDays = userInList.getCompletedDays();
+                lastDateFromCompletedDaysArr = userCompletedDays.get(userCompletedDays.size() - 1);
+                break;
+            }
+        }
+        return lastDateFromCompletedDaysArr;
     }
 
     public MotivationPowerBot() {
