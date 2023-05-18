@@ -63,14 +63,15 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     Метод, который будет отвечать за функционал подсчета воды в день.
      */
     //TODO: Нужно реализовать проверку на прохождение дня в этом методе, чтобы в холостую не накручивался счетчик воды (сейчас он добавляет воду, а только потом смотрит прошел ли день)
-    //TODO: Нужно реализовать проверку на набор необходимого кол-ва воды, чтобы мы не заходили в updateCompletedDays() в пустую. Убрать эту проверку из 169 строки
+    //TODO: Протестировать работу.
     public void waterControl(long chatId, SendMessage msgFromBot, String messageText) {
         msgFromBot.setChatId(chatId);
         msgFromBot.setText("Количество воды учтено");
         try {
             updateMgOfWaterInDay(chatId, messageText);
-            //if (sum >= waterNorm)
+            if (checkSumOfMg(chatId)) {
                 updateCompletedDays(chatId);
+            }
             execute(msgFromBot);
         } catch (TelegramApiException e) {
             e.printStackTrace();
@@ -107,28 +108,24 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     Метод обновляет набор значений mgOfWaterInDay для конкретного юзера
      */
     public void updateMgOfWaterInDay(long chatId, String valueFromMessage) {
-        User[] userList = readDataFromJson();
+        User user = takeCurrentUser(chatId);
         ArrayList<Integer> arrayList = new ArrayList<>();
 
-        for (User userInList : userList) {
-            if (userInList.getChatId().equals(chatId)) {
-                //Отвечает за корректную работу для новых пользователей.
-                if (userInList.getMgOfWaterInDay() != null) {
-                    arrayList.addAll(userInList.getMgOfWaterInDay());
-                }
-                arrayList.add(Integer.valueOf(valueFromMessage));
-                int sumOfMg = arrayList.stream().mapToInt(Integer::intValue).sum();
-                userInList.setSumOfMg(sumOfMg);
-                userInList.setMgOfWaterInDay(arrayList);
-                System.out.println(sumOfMg);
-                System.out.println(userInList.getMgOfWaterInDay());
-                break;
-            }
+        if (user.getMgOfWaterInDay() != null) {
+            arrayList.addAll(user.getMgOfWaterInDay());
         }
+        arrayList.add(Integer.valueOf(valueFromMessage));
+        int sumOfMg = arrayList.stream().mapToInt(Integer::intValue).sum();
+        user.setSumOfMg(sumOfMg);
+        user.setMgOfWaterInDay(arrayList);
+        System.out.println(sumOfMg);
+        System.out.println(user.getMgOfWaterInDay());
+
+        User[] usersList = putUserInArr(user);
 
         try {
             mapper.enable(SerializationFeature.INDENT_OUTPUT);
-            mapper.writeValue(file, userList);
+            mapper.writeValue(file, usersList);
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -160,6 +157,7 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Метод обновляет набор значений выполненных дней
      */
+    //TODO: переписать метод, используя takeCurrentUser() и putUserInArr()
     public void updateCompletedDays(long chatId) {
         User[] userList = readDataFromJson();
         ArrayList<String> arrayListForCompletedDays = new ArrayList<>();
@@ -167,7 +165,7 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
         for (User userInList : userList) {
             if (userInList.getChatId().equals(chatId)) {
                 String lastDayInArr = getLastCompletedDay(chatId, userList);
-                if (!checkCurrentDate(lastDayInArr) && userInList.getSumOfMg() >= waterNorm) {
+                if (!checkCurrentDate(lastDayInArr)) {
                     DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
                     Calendar currentDay = new GregorianCalendar();
                     System.out.println(dateFormat.format(currentDay.getTime()));
@@ -182,7 +180,8 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
                     //Обнуление значений после выполнения дневной нормы
                     userInList.setSumOfMg(0);
                     userInList.setMgOfWaterInDay(null);
-                }
+                } else
+                    System.out.println("Не нифига");
                 break;
             }
         }
@@ -199,27 +198,13 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Проверка прошел ли день, или нет
      */
-    //TODO: Все еще не работает
+    //TODO: Работает, но нужно протестить
     private boolean checkCurrentDate(String lastDateFromCompletedDaysArr) {
-//        Calendar currentDay = new GregorianCalendar();
-//        Calendar lastDateInCalendar = null;
         DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
-
         Calendar calendar = Calendar.getInstance();
         String currentDayInStr = dateFormat.format(calendar.getTime());
         System.out.println(currentDayInStr);
 
-//        System.out.println(dateFormat.format(currentDay.getTime()));
-//        try {
-//            Date date = dateFormat.parse(lastDateFromCompletedDaysArr);
-//            lastDateInCalendar = Calendar.getInstance();
-//            lastDateInCalendar.setTime(date);
-//            System.out.println(lastDateInCalendar.getTime());
-//        } catch (ParseException e) {
-//            e.printStackTrace();
-//        }
-//        System.out.println(dateFormat.format(lastDateInCalendar.getTime()));
-//        return currentDay.compareTo(lastDateInCalendar) > 0;
         return lastDateFromCompletedDaysArr.equals(currentDayInStr);
     }
 
@@ -280,6 +265,55 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             }
         }
         return lastDateFromCompletedDaysArr;
+    }
+
+    /*
+    Проверяем набралось ли количество воды большее или равное норме.
+     */
+    private boolean checkSumOfMg(long chatId) {
+        boolean flag = false;
+        User[] userList = readDataFromJson();
+
+        for (User userInList : userList) {
+            if (userInList.getChatId().equals(chatId)) {
+                if (userInList.getSumOfMg() >= waterNorm) {
+                   flag = true;
+                }
+                break;
+            }
+        }
+
+        return flag;
+    }
+
+    /*
+    Метод, чтобы найти нужного юзера из JSON-файла
+     */
+    private User takeCurrentUser(long chatId) {
+        User user = null;
+        User[] userList = readDataFromJson();
+
+        for (User userInList : userList) {
+            if (userInList.getChatId().equals(chatId)) {
+                user = userInList;
+                break;
+            }
+        }
+        return user;
+    }
+
+    /*
+    Метод, чтобы найти записать юзера в массив юзеров. Используется для корректной записи в JSON-файл
+     */
+    private User[] putUserInArr(User user) {
+        User[] userList = readDataFromJson();
+        for (int i = 0; i < userList.length; i++) {
+            if (user.getChatId().equals(userList[i].getChatId())) {
+                userList[i] = user;
+                break;
+            }
+        }
+        return userList;
     }
 
     public MotivationPowerBot() {
