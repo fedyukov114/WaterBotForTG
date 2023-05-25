@@ -62,7 +62,6 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Метод, который будет отвечать за функционал подсчета воды в день.
      */
-    //TODO: Нужно реализовать проверку на прохождение дня в этом методе, чтобы в холостую не накручивался счетчик воды (сейчас он добавляет воду, а только потом смотрит прошел ли день)
     public void waterControl(long chatId, SendMessage msgFromBot, String messageText) {
         msgFromBot.setChatId(chatId);
         msgFromBot.setText("Количество воды учтено");
@@ -156,7 +155,6 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     /*
     Метод обновляет набор значений выполненных дней
      */
-    //TODO: переписать метод, используя takeCurrentUser() и putUserInArr()
     public void updateCompletedDays(long chatId) {
         User user = takeCurrentUser(chatId);
         ArrayList<String> arrayListForCompletedDays = new ArrayList<>();
@@ -166,18 +164,16 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
             Calendar currentDay = new GregorianCalendar();
             System.out.println(dateFormat.format(currentDay.getTime()));
 
-            //TODO: посмотреть как работает эта проверка с если уже есть запись в completedDays
             //Отвечает за корректную работу для новых пользователей.
             if (user.getCompletedDays() != null) {
                 arrayListForCompletedDays.addAll(user.getCompletedDays());
             }
             arrayListForCompletedDays.add(dateFormat.format(currentDay.getTime()));
             user.setCompletedDays(arrayListForCompletedDays);
-
-            //Обнуление значений после выполнения дневной нормы
-            user.setSumOfMg(0);
-            user.setMgOfWaterInDay(null);
         }
+        //Обнуление значений после выполнения дневной нормы
+        user.setSumOfMg(0);
+        user.setMgOfWaterInDay(null);
 
         User[] usersList = putUserInArr(user);
 
@@ -191,9 +187,8 @@ public class MotivationPowerBot extends TelegramLongPollingBot {
     }
 
     /*
-    Проверка прошел ли день, или нет
+    Проверка прошел ли день или нет
      */
-    //TODO: Работает, но нужно протестить
     private boolean checkCurrentDate(User user) {
         DateFormat dateFormat = new SimpleDateFormat("yyyy/MM/dd");
         ArrayList<String> userCompletedDays = user.getCompletedDays();
